@@ -1,0 +1,67 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+
+  - job_name: 'homeassistant'
+    metrics_path: '/api/prometheus'
+    scheme: http
+    authorization:
+      type: Bearer
+      credentials: 'REPLACE_WITH_HA_BEARER_TOKEN'
+    static_configs:
+      - targets: ['homeassistant:8123']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: home-assistant
+
+  - job_name: 'frigate'
+    static_configs:
+      - targets: ['frigate:5000']
+
+  - job_name: 'synology_snmp'
+    metrics_path: /snmp
+    params:
+      module: [synology]
+      auth: [public_v2]
+    static_configs:
+      - targets: ['192.168.1.198']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: snmp-exporter:9116
+
+  - job_name: 'amd_gpu'
+    scrape_interval: 10s               # more frequent for GPU metrics
+    static_configs:
+      - targets: ['amd-metrics-exporter:9200']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: minix-amd-gpu       # change to your preferred hostname/label
+    # metric_relabel_configs:            # optional - uncomment & adjust if needed
+    #   - source_labels: [__name__]
+    #     regex: '.*some_noisy_metric.*'
+    #     action: drop
+
+  - job_name: 'alloy'
+    static_configs:
+      - targets: ['alloy:12345']
+
+# Optional: remote_write / alerting rules / etc. can be added later

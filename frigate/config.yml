@@ -1,0 +1,41 @@
+mqtt:
+  enabled: false
+
+detectors:
+  rocm:
+    type: rocm
+    device: 0
+
+cameras:
+  tp_outdoor:
+    ffmpeg:
+      inputs:
+        - path: rtsp://admin:${FRIGATE_RTSP_PASSWORD}@192.168.1.999:554/stream1
+          input_args: preset-rtsp-restream
+    detect:
+      width: 1920
+      height: 1080
+      fps: 5
+    objects:
+      track:
+        - person
+      filters:
+        person:
+          min_score: 0.7
+          min_area: 5000
+    snapshots:
+      enabled: true
+      retain:
+        default: 7
+    record:
+      enabled: true
+      events:
+        retain_days: 7
+
+face_recognition:
+  enabled: true
+
+go2rtc:
+  streams:
+    tp_outdoor: rtsp://admin:${FRIGATE_RTSP_PASSWORD}@192.168.1.999:554/stream1
+

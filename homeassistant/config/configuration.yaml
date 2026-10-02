@@ -1,0 +1,9 @@
+default_config:
+
+prometheus:
+  namespace: homeassistant
+  filter:
+    include_domains:
+      - camera
+      - sensor
+      - person
