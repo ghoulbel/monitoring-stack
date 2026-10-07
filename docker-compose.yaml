@@ -135,14 +135,23 @@ services:
   # and the endpoint then returns zero metrics. (Cost me two attempts to learn:
   # DCGM_FI_DEV_GPU_CLOCK and DCGM_FI_DEV_POWER_LIMIT do not exist; the real
   # names are DCGM_FI_DEV_SM_CLOCK and DCGM_FI_DEV_POWER_MGMT_LIMIT.)
-  # ── REMOVED ON THE `amd` BRANCH: dcgm-exporter ────────────────────────────
-  # It exported GPU metrics from the NVIDIA RTX 4060 Laptop via DCGM, which is
-  # NVIDIA-only and cannot work on a Radeon. Nothing is substituted here on
-  # purpose: an `amd_gpu` job scraping an exporter that is not running just
-  # produces a permanently DOWN target, which is worse than no GPU dashboard at
-  # all because it trains you to ignore red rows. When you do want AMD GPU
-  # metrics, the replacement is `kmulvey/radeon_exporter` — that is what the
-  # old MiniX used and it is documented in git history of this file.
+  # GPU metrics on AMD. Mirrors amd-metrics-exporter in
+  # docker-compose.yaml.minix.copy. No host port: Prometheus scrapes it over
+  # monitoring_net by service name.
+  amd-metrics-exporter:
+    image: kmulvey/radeon_exporter:latest
+    container_name: amd-metrics-exporter
+    devices:
+      - /dev/dri:/dev/dri
+      - /dev/kfd:/dev/kfd
+    group_add:
+      - "${RENDER_GID:?RENDER_GID unset - run ../bootstrap.sh}"
+    volumes:
+      - /sys:/sys:ro
+    networks:
+      - monitoring_net
+    restart: unless-stopped
+
   grafana:
     image: grafana/grafana:11.6.0
     container_name: grafana
@@ -261,35 +270,21 @@ services:
       - monitoring_net
     restart: unless-stopped
 
-  # ── DISABLED ON THE `amd` BRANCH: frigate ─────────────────────────────────
-  # `stable-tensorrt` bakes in NVIDIA TensorRT. There is no TensorRT for AMD, so
-  # this image cannot start on the Radeon 890M — it would crash-loop on boot.
-  # The cameras are not physically mounted yet either, so there is nothing to
-  # lose by not running it.
-  #
-  # To bring it back once the cameras are mounted, use the AMD image the old
-  # MiniX ran (`ghcr.io/blakeblackshear/frigate:stable-openvino-amd64`), drop
-  # `privileged: true` and add `devices: [/dev/dri:/dev/dri]` plus
-  # `group_add: ["${RENDER_GID}"]`, then re-add the `frigate` Prometheus job
-  # below with `metrics_path: /api/metrics`.
-  #
-  # The `disabled` profile means a plain `docker compose up -d` skips this
-  # service entirely rather than trying to start a TensorRT image on a Radeon.
-  # Commenting the service out would also work, but a profile keeps the whole
-  # configuration visible in the file and lets you bring it back with
-  # `--profile disabled`.
   frigate:
-    image: ghcr.io/blakeblackshear/frigate:stable-tensorrt
+    image: ghcr.io/blakeblackshear/frigate:stable-rocm
     container_name: frigate
-    profiles:
-      - disabled
     privileged: true
+    devices:
+      - /dev/dri:/dev/dri
+      - /dev/kfd:/dev/kfd
     shm_size: '2gb'
     volumes:
       - ./frigate/config.yml:/config/config.yml:ro
       - /mnt/synology/frigate:/media/frigate
       - /etc/localtime:/etc/localtime:ro
     environment:
+      LIBVA_DRIVER_NAME: radeonsi
+      HSA_OVERRIDE_GFX_VERSION: 11.0.0
       FRIGATE_RTSP_PASSWORD: ${FRIGATE_RTSP_PASSWORD}
       TZ: ${TZ}
     # Split deliberately:

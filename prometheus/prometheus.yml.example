@@ -1,10 +1,4 @@
 global:
-
-  # Removed on the `amd` branch: the `frigate` and `nvidia_gpu` jobs.
-  # Frigate's image is NVIDIA TensorRT-only (see docker-compose.yaml) and
-  # dcgm-exporter is NVIDIA-only, so on the Radeon 890M both targets would be
-  # permanently DOWN. A permanently DOWN target is worse than a missing one:
-  # it trains you to ignore red rows. See git history for how to restore them.
   scrape_interval: 15s
   evaluation_interval: 15s
 
@@ -34,6 +28,14 @@ scrape_configs:
         target_label: instance
         replacement: home-assistant
 
+  # Frigate serves its Prometheus metrics at /api/metrics, NOT /metrics.
+  # /metrics returns the React SPA's index.html, so the old config made
+  # Prometheus log "received unsupported Content-Type text/html" and this
+  # target was permanently DOWN (verified broken for 48h+ via query_range).
+  - job_name: 'frigate'
+    metrics_path: '/api/metrics'
+    static_configs:
+      - targets: ['frigate:5000']
 
   - job_name: 'synology_snmp'
     metrics_path: /snmp
@@ -50,6 +52,20 @@ scrape_configs:
       - target_label: __address__
         replacement: snmp-exporter:9116
 
+  # GPU metrics. This job replaces the old "amd_gpu" job, which scraped
+  # amd-metrics-exporter:9200 -- a container that has never existed in this
+  # stack, so the target had been permanently DOWN. The host's real GPU is the
+  # NVIDIA RTX 4060 Laptop GPU, exported by the dcgm-exporter service. The AMD
+  # Raphael is only the CPU iGPU and node-exporter's hwmon collector already
+  # covers it as node_hwmon_*.
+  - job_name: 'nvidia_gpu'
+    scrape_interval: 10s               # more frequent for GPU metrics
+    static_configs:
+      - targets: ['amd-metrics-exporter:9200']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: nvidia-gpu
 
   - job_name: 'alloy'
     static_configs:
