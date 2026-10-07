@@ -118,6 +118,42 @@ services:
       - loki
     restart: unless-stopped
 
+  # NVIDIA GPU metrics. This is the exporter that replaced the dead
+  # "amd_gpu" scrape job, which pointed at amd-metrics-exporter:9200 -- a
+  # container that has never existed in this stack, so the target had been
+  # permanently DOWN. This box's real GPU is the NVIDIA RTX 4060 Laptop GPU
+  # (Jellyfin hardware transcoding, ComfyUI, Ollama); the AMD part is only the
+  # CPU iGPU (Raphael), and node-exporter's hwmon collector already reports its
+  # temperature/power via `node_hwmon_*`, so a dedicated AMD exporter would be
+  # duplicated work.
+  #
+  # Uses NVIDIA's bundled default-counters.csv on purpose: do NOT mount a custom
+  # one unless a field is missing. The bundled list is validated against the DCGM
+  # version in this image, and a hand-written list fails closed -- one unknown
+  # field name aborts the whole scrape with
+  #   "failed to get counters: could not find DCGM field; unknown ExporterCounter field"
+  # and the endpoint then returns zero metrics. (Cost me two attempts to learn:
+  # DCGM_FI_DEV_GPU_CLOCK and DCGM_FI_DEV_POWER_LIMIT do not exist; the real
+  # names are DCGM_FI_DEV_SM_CLOCK and DCGM_FI_DEV_POWER_MGMT_LIMIT.)
+  dcgm-exporter:
+    image: nvidia/dcgm-exporter:4.6.1-4.8.4
+    container_name: dcgm-exporter
+    # SYS_ADMIN is required: DCGM loads kernel modules to read GPU registers.
+    # It is granted to this one container only, not to anything else in the stack.
+    cap_add:
+      - SYS_ADMIN
+    gpus: all
+    # No `ports:`. Prometheus scrapes it at dcgm-exporter:9400 over
+    # monitoring_net; nothing else needs to reach it.
+    # Deliberately NO --config-file: that flag expects a YAML config, so
+    # pointing it at the bundled default-counters.csv makes the exporter parse
+    # CSV as YAML and crash-loop with
+    #   "parse config file ...: yaml: line 9: did not find expected <document start>"
+    # With no flag it uses its own bundled counters file, which is what we want.
+    networks:
+      - monitoring_net
+    restart: unless-stopped
+
   grafana:
     image: grafana/grafana:11.6.0
     container_name: grafana
