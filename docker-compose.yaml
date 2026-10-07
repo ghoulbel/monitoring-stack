@@ -11,8 +11,13 @@ services:
       - '--storage.tsdb.path=/prometheus'
       - '--storage.tsdb.retention.time=45d'
       - '--web.enable-lifecycle'
-    ports:
-      - "9090:9090"
+    # No `ports:` on purpose. This is a metrics backend: Grafana and the
+    # Prometheus web UI both reach it over monitoring_net, and the Prometheus
+    # self-scrape target is localhost *inside this container*.
+    #
+    # It used to publish 0.0.0.0:9090 with no authentication, which meant
+    # anyone on the LAN could read your full host metrics — disk, filesystem
+    # usage, network, what is exposed. Remove the ports and nothing breaks.
     networks:
       - monitoring_net
     deploy:
@@ -63,8 +68,8 @@ services:
     user: "1000:1000"
     volumes:
       - ./snmp.yml:/etc/snmp_exporter/snmp.yml:ro
-    ports:
-      - "9116:9116"
+    # No `ports:` on purpose. Prometheus scrapes it at snmp-exporter:9116 over
+    # monitoring_net; nothing else talks to it.
     networks:
       - monitoring_net
     restart: unless-stopped
@@ -76,8 +81,9 @@ services:
     volumes:
       - ./loki-config.yml:/etc/loki/local-config.yaml:ro
       - ./loki_data:/loki
-    ports:
-      - "3100:3100"
+    # No `ports:` on purpose. The Grafana datasource is http://loki:3100 over
+    # monitoring_net and Alloy pushes to it the same way. `http_listen_port`
+    # in loki-config.yml is the container's own listener and is unaffected.
     command: -config.file=/etc/loki/local-config.yaml
     networks:
       - monitoring_net
@@ -102,8 +108,10 @@ services:
       - run
       - --server.http.listen-addr=0.0.0.0:12345
       - /etc/alloy/config.river
-    ports:
-      - "12345:12345"
+    # No `ports:` on purpose. `--server.http.listen-addr` is Alloy's own
+    # listener and stays; what changes is that it is no longer reachable from
+    # off-host. Prometheus scrapes it at alloy:12345 over monitoring_net.
+    # /metrics was readable by anyone on the LAN before.
     networks:
       - monitoring_net
     depends_on:
@@ -202,6 +210,26 @@ services:
       - /run/dbus:/run/dbus:ro
     environment:
       TZ: ${TZ}
+    # PRESERVED ON 0.0.0.0 ON PURPOSE — do not "tidy" this line.
+    #
+    # Home Assistant must be reachable from the LAN: the phone app talks to it
+    # over the local network, and so do the IoT integrations (Matter, Zigbee
+    # bridges, Chromecast, the voice assistants). Removing the published port
+    # breaks the house.
+    #
+    # This is machine-to-machine traffic (rule 12), not human access, and HA is
+    # NOT exposed to the internet: there is no tunnel ingress rule for it and
+    # no Traefik router, so it is already private in the sense that matters.
+    #
+    # Do not put it behind forward-auth either. Verified, not assumed: HA's
+    # frontend and its mobile app both authenticate with a bearer token and
+    # send no cookie (/auth/authorize returns a code with no set-cookie;
+    # /api/config returns 401 with no token, with a fake cookie, and with a
+    # fake bearer alike). There is no SSO add-on installed and core 2026.9.3
+    # ships none. A gate would lock you out of your own house.
+    #
+    # For access from outside the home, use Tailscale on the device — that
+    # needs no public exposure and is already installed.
     ports:
       - "8123:8123"
     networks:
@@ -220,8 +248,21 @@ services:
     environment:
       FRIGATE_RTSP_PASSWORD: ${FRIGATE_RTSP_PASSWORD}
       TZ: ${TZ}
+    # Split deliberately:
+    #   5000    the Frigate web UI (camera wall, recordings, config). Was
+    #           unauthenticated on 0.0.0.0 — it showed your live cameras to
+    #           anyone on the Wi-Fi. Now loopback + tailnet. Frigate itself
+    #           still reaches it fine: the Prometheus scrape target is
+    #           frigate:5000 over monitoring_net, and the HA integration does
+    #           the same.
+    #   8554    go2rtc RTSP, 8555/udp WebRTC — PRESERVED ON 0.0.0.0. These are
+    #           the stream *distribution* ports, and anything consuming a
+    #           restream (a TV, an NVR, a recorder) needs to open them on the
+    #           LAN. Cameras are pulled, not pushed, so this is for consumers.
+    #           If you never stream Frigate outside this host, both can go too.
     ports:
-      - "5000:5000"
+      - "127.0.0.1:${FRIGATE_PORT:-5000}:5000"
+      - "${TAILSCALE_IP:?TAILSCALE_IP unset - run ../bootstrap.sh}:${FRIGATE_PORT:-5000}:5000"
       - "8554:8554"
       - "8555:8555"
     networks:
