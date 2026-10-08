@@ -38,10 +38,15 @@ services:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /:/rootfs:ro
+      # Lets backup-freshness and other host-side facts be exported as metrics
+      # without running a second exporter. Written by
+      # backup-stack/write-backup-metrics.sh on a timer.
+      - ./textfile:/textfile:ro
     command:
       - '--path.procfs=/host/proc'
       - '--path.rootfs=/rootfs'
       - '--path.sysfs=/host/sys'
+      - '--collector.textfile.directory=/textfile'
       - '--collector.filesystem.ignored-mount-points=^/(dev|proc|sys|var/lib/docker/.+|var/lib/kubelet/.+)($$|/)'
     networks:
       - monitoring_net
@@ -314,11 +319,6 @@ services:
         reservations:
           cpus: '1.0'
           memory: 2G
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities:
-                - gpu
     restart: unless-stopped
 
 networks:
