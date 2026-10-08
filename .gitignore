@@ -12,6 +12,7 @@ prometheus_data/
 loki_data/
 grafana_data/
 alloy_data/
+textfile/
 
 # Home Assistant runtime state (contains tokens, DB, logs)
 homeassistant/config/.storage/
