@@ -1,6 +1,12 @@
 services:
   prometheus:
     image: prom/prometheus:v3.10.0
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     container_name: prometheus
     user: "1000:1000"
     volumes:
@@ -81,6 +87,12 @@ services:
 
   loki:
     image: grafana/loki:3.2.0
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3100/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
     container_name: loki
     user: "1000:1000"
     volumes:
@@ -101,7 +113,7 @@ services:
     restart: unless-stopped
 
   alloy:
-    image: grafana/alloy:latest
+    image: grafana/alloy@sha256:2aa2099af76c0098d4af7a4d6e48f86cb66dc1a000222ad927a1c67c6542d13f
     container_name: alloy
     user: "0:0"
     volumes:
@@ -144,7 +156,7 @@ services:
   # docker-compose.yaml.minix.copy. No host port: Prometheus scrapes it over
   # monitoring_net by service name.
   amd-metrics-exporter:
-    image: kmulvey/radeon_exporter:latest
+    image: kmulvey/radeon_exporter@sha256:5c1d6c7982909622662a97cb5dbfb976bb0155a4ba8569a47a74e7a2b38cfbaf
     container_name: amd-metrics-exporter
     devices:
       - /dev/dri:/dev/dri
@@ -159,6 +171,12 @@ services:
 
   grafana:
     image: grafana/grafana:11.6.0
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
     container_name: grafana
     user: "1000:1000"
     volumes:
